@@ -13,24 +13,38 @@ nonisolated final class PitchTracker: @unchecked Sendable {
     private let queue = DispatchQueue(label: "chordid.pitch", qos: .userInitiated)
     // Only touched on `queue`.
     private var detector: PitchDetector?
-    private var window: [Float] = []
+    private var history: [Float] = []
     private var pending: [Float] = []
+    private var sampleRate: Double = 48_000
     private var windowSize = 4096
-    private var hopSize = 1024
+    /// ~21 ms between analyses at 48 kHz.
+    private let hopSize = 1024
+    private let maxWindow = 8192
+    private var expected: ClosedRange<Double>?
     private(set) var isRunning = false
+
+    /// The frequencies the string being listened for can produce (nil = anything).
+    /// Also sizes the analysis window to suit that string.
+    func setExpectedRange(_ range: ClosedRange<Double>?) {
+        queue.async { [self] in
+            expected = range
+            windowSize = PitchDetector.windowSize(for: sampleRate, lowestFrequency: range?.lowerBound ?? 60)
+        }
+    }
 
     func start() throws {
         guard !isRunning else { return }
         let input = engine.inputNode
+        // Belt and braces: voice processing would add gain control and noise suppression.
+        if input.isVoiceProcessingEnabled { try? input.setVoiceProcessingEnabled(false) }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw TrackerError.noInput }
 
-        let size = PitchDetector.windowSize(for: format.sampleRate)
         queue.sync {
+            sampleRate = format.sampleRate
             detector = PitchDetector(sampleRate: format.sampleRate)
-            windowSize = size
-            hopSize = size / 4
-            window.removeAll(keepingCapacity: true)
+            windowSize = PitchDetector.windowSize(for: format.sampleRate, lowestFrequency: expected?.lowerBound ?? 60)
+            history.removeAll(keepingCapacity: true)
             pending.removeAll(keepingCapacity: true)
         }
 
@@ -55,21 +69,22 @@ nonisolated final class PitchTracker: @unchecked Sendable {
         engine.stop()
         isRunning = false
         queue.async { [weak self] in
-            self?.window.removeAll()
+            self?.history.removeAll()
             self?.pending.removeAll()
         }
     }
 
-    /// Slides the analysis window forward one hop at a time, whatever buffer size iOS delivers.
+    /// Slides forward one hop at a time, whatever buffer size iOS delivers, and
+    /// analyses the most recent `windowSize` samples.
     private func consume(_ samples: [Float]) {
         guard let detector else { return }
         pending.append(contentsOf: samples)
         while pending.count >= hopSize {
-            window.append(contentsOf: pending.prefix(hopSize))
+            history.append(contentsOf: pending.prefix(hopSize))
             pending.removeFirst(hopSize)
-            if window.count > windowSize { window.removeFirst(window.count - windowSize) }
-            if window.count == windowSize {
-                onReading?(detector.analyze(window))
+            if history.count > maxWindow { history.removeFirst(history.count - maxWindow) }
+            if history.count >= windowSize {
+                onReading?(detector.analyze(Array(history.suffix(windowSize)), expected: expected))
             }
         }
     }
@@ -97,6 +112,8 @@ enum AudioSessionManager {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetoothA2DP])
         try session.setActive(true)
+        // Most iPhones don't allow this; where they do, use the full input gain.
+        if session.isInputGainSettable { try? session.setInputGain(1.0) }
     }
 
     static func deactivate() {

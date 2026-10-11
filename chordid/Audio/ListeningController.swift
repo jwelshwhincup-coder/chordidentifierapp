@@ -19,7 +19,7 @@ final class ListeningController {
     private(set) var session: ListeningSession?
     /// A problem with the last note heard, e.g. too low for the string.
     private(set) var problem: String?
-    /// Live input level 0…1, for the meter.
+    /// Live input level 0…1, for the meter (0 = room level, 1 = 40 dB above it).
     private(set) var level: Double = 0
 
     @ObservationIgnored private let tracker = PitchTracker()
@@ -72,7 +72,9 @@ final class ListeningController {
         }
 
         model.clear()
-        session = ListeningSession(tuning: model.tuning, capo: model.capo)
+        let newSession = ListeningSession(tuning: model.tuning, capo: model.capo)
+        session = newSession
+        tracker.setExpectedRange(Self.expectedRange(for: newSession))
         phase = .listening
     }
 
@@ -84,6 +86,7 @@ final class ListeningController {
         if phase == .listening { phase = .idle }
         session = nil
         level = 0
+        tracker.setExpectedRange(nil)
     }
 
     func skipString() {
@@ -110,8 +113,7 @@ final class ListeningController {
 
     private func handle(_ reading: PitchReading) {
         guard phase == .listening else { return }
-        // −60 dB … 0 dB mapped to 0…1.
-        level = min(max((reading.decibels + 60) / 60, 0), 1)
+        level = min(max((reading.decibels - PitchReading.decibels(stabilizer.noiseFloor)) / 40, 0), 1)
 
         guard let note = stabilizer.process(reading), var session else { return }
         let openName = session.currentString.map { model?.soundingTuning.stringNames[$0] ?? "" } ?? ""
@@ -129,8 +131,19 @@ final class ListeningController {
         }
     }
 
+    /// What the string being listened for can produce: its open note (with capo,
+    /// allowing a string tuned up to 1.5 semitones flat so "check your tuning" can
+    /// still be shown) up to the highest fret.
+    static func expectedRange(for session: ListeningSession) -> ClosedRange<Double>? {
+        guard let open = session.currentOpenNote else { return nil }
+        let low = open.frequency() * pow(2, -1.5 / 12)
+        let high = Note(midi: open.midi + session.maxShapeFret).frequency() * pow(2, 0.5 / 12)
+        return low...high
+    }
+
     private func apply(_ updated: ListeningSession) {
         session = updated
+        tracker.setExpectedRange(Self.expectedRange(for: updated))
         model?.shape = updated.shape
         if updated.isFinished { stop() }
     }
