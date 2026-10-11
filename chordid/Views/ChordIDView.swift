@@ -7,21 +7,23 @@ struct ChordIDView: View {
     @Bindable var model: ChordIDModel
     var listener: ListeningController
     var player: GuitarPlayer
+    /// Tells the shell a sheet is up, so it can scale the screen back.
+    @Binding var sheetShown: Bool
     @State private var showTuning = false
     @State private var showCapo = false
+    @State private var showSettings = false
     @State private var toast: String?
     @Environment(\.modelContext) private var context
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                PillMenuButton(title: model.tuning.name, accessibilityLabel: "Tuning: \(model.tuning.name)",
-                               hint: "Opens the tuning picker") { showTuning = true }
-                Spacer(minLength: 0)
-                PillMenuButton(title: model.capo == 0 ? "No capo" : "Capo \(model.capo)",
-                               accessibilityLabel: model.capo == 0 ? "No capo" : "Capo on fret \(model.capo)",
-                               hint: "Opens the capo picker") { showCapo = true }
-            }
+            SetupBar(
+                tuningName: model.tuning.name,
+                capo: model.capo,
+                onTuning: { showTuning = true },
+                onCapo: { showCapo = true },
+                onSettings: { showSettings = true }
+            )
             .disabled(listener.isListening)
             .padding(.top, 8)
 
@@ -35,9 +37,10 @@ struct ChordIDView: View {
                     ? (listener.session?.currentString.map { [$0] } ?? [])
                     : player.activeStrings,
                 listeningString: listener.isListening ? (listener.session?.currentString ?? model.tuning.stringCount) : nil,
+                vibratingSince: player.vibratingSince,
                 noteName: { model.noteName(onString: $0) },
-                onTapFret: listener.isListening ? nil : { model.tapFret(string: $0, fret: $1) },
-                onTapMarker: listener.isListening ? nil : { model.tapMarker(string: $0) }
+                onTapFret: listener.isListening ? nil : { Haptics.fretTap(); model.tapFret(string: $0, fret: $1) },
+                onTapMarker: listener.isListening ? nil : { Haptics.fretTap(); model.tapMarker(string: $0) }
             )
             .frame(minHeight: 240, maxHeight: 420)
             .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
@@ -85,6 +88,17 @@ struct ChordIDView: View {
         .sheet(isPresented: $showCapo) {
             CapoSheet(model: model)
         }
+        .sheet(isPresented: $showSettings) {
+            SettingsSheet()
+        }
+        .onChange(of: showTuning || showCapo || showSettings) { _, shown in sheetShown = shown }
+        .onAppear { Haptics.prepare() }
+        // Success haptic once a chord settles (not on every intermediate tap or mic step).
+        .task(id: model.analysis.best?.symbol) {
+            guard let best = model.analysis.best, best.kind == .chord, !listener.isListening else { return }
+            try? await Task.sleep(for: .milliseconds(450))
+            if !Task.isCancelled { Haptics.chordNamed() }
+        }
     }
 
     private var resultSection: some View {
@@ -120,7 +134,9 @@ extension ChordIDView {
         let name = model.analysis.best?.displayName ?? "Chord"
         let result = SavedChord.save(shape: model.shape, tuning: model.tuning, capo: model.capo, name: name, in: context)
         switch result {
-        case .saved: show("Saved to library")
+        case .saved:
+            Haptics.saved()
+            show("Saved to library")
         case .alreadySaved: show("Already in your library")
         case .nothingToSave: break
         }
@@ -136,29 +152,71 @@ extension ChordIDView {
     }
 }
 
-/// White capsule with a title and a chevron (tuning, capo).
-struct PillMenuButton: View {
-    let title: String
-    let accessibilityLabel: String
-    let hint: String
-    let action: () -> Void
+/// Top bar: one capsule split into Tuning and Capo, plus a round settings button
+/// of the same height, so the three read as one set of controls.
+struct SetupBar: View {
+    let tuningName: String
+    let capo: Int
+    let onTuning: () -> Void
+    let onCapo: () -> Void
+    let onSettings: () -> Void
+
+    static let height: CGFloat = 58
 
     var body: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 0) {
+                segment(caption: "Tuning", value: tuningName, padding: 20, action: onTuning)
+                    .layoutPriority(1)
+                    .accessibilityLabel("Tuning, \(tuningName)")
+                    .accessibilityHint("Opens the tuning picker")
+                Rectangle()
+                    .fill(Theme.divider)
+                    .frame(width: 1, height: 28)
+                segment(caption: "Capo", value: capo == 0 ? "None" : "Fret \(capo)", padding: 16, action: onCapo)
+                    .frame(width: 112)
+                    .accessibilityLabel(capo == 0 ? "No capo" : "Capo on fret \(capo)")
+                    .accessibilityHint("Opens the capo picker")
+            }
+            .frame(height: Self.height)
+            .background(Theme.card, in: Capsule())
+
+            Button(action: onSettings) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundStyle(Theme.text)
+                    .frame(width: Self.height, height: Self.height)
+                    .background(Theme.card, in: Circle())
+            }
+            .accessibilityLabel("Settings")
+        }
+    }
+
+    private func segment(caption: String, value: String, padding: CGFloat, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                Text(title)
-                    .font(.brandBody)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(caption.uppercased())
+                        .font(BrandFont.font(11, .semibold, relativeTo: .caption2))
+                        .tracking(0.8)
+                        .foregroundStyle(Theme.secondaryText)
+                    Text(value)
+                        .font(.brandBodySemibold)
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+                Spacer(minLength: 4)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.secondaryText)
             }
-            .foregroundStyle(Theme.text)
-            .padding(.horizontal, 18)
-            .frame(minHeight: Theme.minTouch)
-            .background(Theme.card, in: Capsule())
+            .padding(.horizontal, padding)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
         }
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint(hint)
+        .buttonStyle(.plain)
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
     }
 }
 
@@ -182,9 +240,8 @@ struct ListeningPanel: View {
                         .foregroundStyle(Theme.secondaryText)
                 }
                 Spacer(minLength: 8)
-                Image(systemName: "waveform", variableValue: listener.level)
-                    .font(.system(size: 32, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
+                LevelMeter(level: listener.level)
+                    .frame(width: 44, height: 36)
                     .accessibilityHidden(true)
             }
             .accessibilityElement(children: .combine)
@@ -216,6 +273,28 @@ struct ListeningPanel: View {
     private var subtitle: String {
         "String \(stringIndex + 1) of \(model.tuning.stringCount), low to high"
     }
+}
+
+/// Five bars that bounce with the microphone level (mockup 1's waveform, live).
+struct LevelMeter: View {
+    let level: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let shape: [Double] = [0.45, 0.8, 1.0, 0.7, 0.4]
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 4) {
+            ForEach(shape.indices, id: \.self) { i in
+                Capsule()
+                    .fill(Theme.accent)
+                    .frame(width: 4.5)
+                    .frame(height: max(6, 36 * shape[i] * (0.2 + 0.8 * displayed)))
+            }
+        }
+        .frame(maxHeight: .infinity)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.09), value: level)
+    }
+
+    private var displayed: Double { reduceMotion ? (level > 0.15 ? 0.7 : 0.2) : level }
 }
 
 /// Shown when the microphone can't be used.
@@ -329,6 +408,7 @@ struct SpacedLabelStyle: LabelStyle {
 /// "That's a / C major / C · E · G" plus other possible names.
 struct ResultView: View {
     let analysis: ChordAnalysis
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// e.g. "C shape, capo 2".
     var shapeNote: String?
     var onClear: (() -> Void)?
@@ -351,12 +431,21 @@ struct ResultView: View {
 
             if let best = analysis.best {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    // Old and new names overlap while they cross-fade.
+                    ZStack(alignment: .leading) {
                     Text(best.displayName)
                         .font(.brandChordName)
                         .tracking(-1.5)
                         .foregroundStyle(Theme.text)
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
+                        // A new name springs in; the old one fades out underneath.
+                        .id(best.symbol)
+                        .transition(reduceMotion ? .opacity : .asymmetric(
+                            insertion: .scale(scale: 0.7, anchor: .leading).combined(with: .opacity),
+                            removal: .opacity))
+                    }
+                    .animation(nameAnimation, value: best.symbol)
                     Spacer(minLength: 8)
                     if best.kind != .unrecognized {
                         Text(best.toneNames.joined(separator: " · "))
@@ -398,6 +487,10 @@ struct ResultView: View {
         }
     }
 
+    private var nameAnimation: Animation {
+        reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.38, dampingFraction: 0.62)
+    }
+
     private var lead: String {
         guard let best = analysis.best else { return "Nothing yet" }
         switch best.kind {
@@ -412,7 +505,7 @@ struct ResultView: View {
 }
 
 #Preview {
-    ChordIDView(model: ChordIDModel(), listener: ListeningController(), player: GuitarPlayer())
+    ChordIDView(model: ChordIDModel(), listener: ListeningController(), player: GuitarPlayer(), sheetShown: .constant(false))
         .modelContainer(for: SavedChord.self, inMemory: true)
         .background(Theme.background)
 }

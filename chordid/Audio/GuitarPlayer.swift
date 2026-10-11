@@ -8,6 +8,8 @@ import Observation
 final class GuitarPlayer {
     /// Strings currently lighting up (0 = lowest).
     private(set) var activeStrings: Set<Int> = []
+    /// When each string started sounding, for the vibration animation.
+    private(set) var vibratingSince: [Int: Date] = [:]
     private(set) var isAvailable = true
 
     /// The strum the user picked from the previews.
@@ -52,6 +54,7 @@ final class GuitarPlayer {
         strumID += 1
         highlightTask?.cancel()
         activeStrings = []
+        vibratingSince = [:]
         if engine.isRunning {
             node.stop()
             engine.stop()
@@ -84,20 +87,33 @@ final class GuitarPlayer {
     private func highlight(_ events: [StrumEvent], latency: TimeInterval) {
         highlightTask?.cancel()
         activeStrings = []
+        vibratingSince = [:]
         let hold = highlightSeconds
+        let vibration = FretboardView.vibrationSeconds
         highlightTask = Task { [weak self] in
             let start = ContinuousClock.now + .milliseconds(Int(latency * 1000))
             // Every start and end time, in order.
-            var changes: [(time: Double, string: Int, on: Bool)] = []
+            enum Change { case on, off, still }
+            var changes: [(time: Double, string: Int, change: Change)] = []
             for e in events {
-                changes.append((e.time, e.string, true))
-                changes.append((e.time + hold, e.string, false))
+                changes.append((e.time, e.string, .on))
+                changes.append((e.time + hold, e.string, .off))
+                changes.append((e.time + vibration, e.string, .still))
             }
             changes.sort { $0.time < $1.time }
             for change in changes {
                 try? await Task.sleep(until: start + .milliseconds(Int(change.time * 1000)), clock: .continuous)
                 guard !Task.isCancelled, let self else { return }
-                if change.on { self.activeStrings.insert(change.string) } else { self.activeStrings.remove(change.string) }
+                switch change.change {
+                case .on:
+                    self.activeStrings.insert(change.string)
+                    self.vibratingSince[change.string] = .now
+                    Haptics.strumTick()
+                case .off:
+                    self.activeStrings.remove(change.string)
+                case .still:
+                    self.vibratingSince[change.string] = nil
+                }
             }
         }
     }

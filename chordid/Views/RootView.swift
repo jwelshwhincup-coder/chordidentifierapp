@@ -13,14 +13,21 @@ struct RootView: View {
     @State private var tab: AppTab = .chordID
     @State private var showDebug = false
     @State private var libraryPath: [PersistentIdentifier] = []
+    @State private var sheetShown = false
     @Query private var saved: [SavedChord]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
+            // Tabs slide: Chord ID lives to the left, Library to the right.
             switch tab {
-            case .chordID: ChordIDView(model: model, listener: listener, player: player)
-            case .library: LibraryView(path: $libraryPath, player: player)
+            case .chordID:
+                ChordIDView(model: model, listener: listener, player: player, sheetShown: $sheetShown)
+                    .transition(reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity))
+            case .library:
+                LibraryView(path: $libraryPath, player: player)
+                    .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -28,7 +35,7 @@ struct RootView: View {
             if tab != .library || libraryPath.isEmpty {
             BottomBar(tab: $tab, isListening: listener.isListening,
                       highlightMic: tab == .library && saved.isEmpty, micAction: {
-                tab = .chordID
+                withAnimation(tabAnimation) { tab = .chordID }
                 // Playback and the microphone never run at the same time.
                 player.stop()
                 listener.toggle(model: model)
@@ -42,6 +49,16 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: libraryPath.isEmpty)
+        // A sheet scales the screen behind it back slightly.
+        .mask {
+            // Masking with a full-screen shape keeps the edge-to-edge background visible.
+            RoundedRectangle(cornerRadius: sheetShown && !reduceMotion ? 38 : 0, style: .continuous)
+                .ignoresSafeArea()
+        }
+        .scaleEffect(sheetShown && !reduceMotion ? 0.93 : 1)
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: sheetShown)
+        .background(Color.black.ignoresSafeArea())
+        .environment(\.tabAnimation, tabAnimation)
         .onChange(of: tab) { _, newTab in
             if newTab != .chordID { listener.stop() }
             player.stop()
@@ -49,6 +66,21 @@ struct RootView: View {
         .sheet(isPresented: $showDebug) {
             PitchDebugView(tuning: model.soundingTuning)
         }
+    }
+
+    private var tabAnimation: Animation {
+        reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.42, dampingFraction: 0.88)
+    }
+}
+
+private struct TabAnimationKey: EnvironmentKey {
+    static let defaultValue: Animation = .default
+}
+
+extension EnvironmentValues {
+    var tabAnimation: Animation {
+        get { self[TabAnimationKey.self] }
+        set { self[TabAnimationKey.self] = newValue }
     }
 }
 
@@ -63,6 +95,8 @@ struct BottomBar: View {
     var highlightMic = false
     var micAction: () -> Void
     var micLongPress: () -> Void = {}
+    @Environment(\.tabAnimation) private var tabAnimation
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 12) {
@@ -77,15 +111,22 @@ struct BottomBar: View {
             Image(systemName: isListening ? "stop.fill" : "mic")
                 .font(.system(size: 24, weight: .medium))
                 .foregroundStyle(.white)
+                // The icon morphs between mic and stop.
+                .contentTransition(.symbolEffect(.replace.downUp))
                 .frame(width: 64, height: 64)
                 .background(Theme.accent, in: Circle())
                 .background {
-                    // Halo while listening (animated in a later phase).
-                    Circle()
-                        .fill(Theme.accent.opacity(0.22))
-                        .frame(width: 80, height: 80)
-                        .opacity(isListening || highlightMic ? 1 : 0)
+                    ZStack {
+                        Circle()
+                            .fill(Theme.accent.opacity(0.22))
+                            .frame(width: 80, height: 80)
+                            .opacity(isListening || highlightMic ? 1 : 0)
+                        if isListening && !reduceMotion {
+                            ExpandingRing()
+                        }
+                    }
                 }
+                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isListening)
                 .shadow(color: Theme.accent.opacity(0.35), radius: 16, y: 6)
                 .contentShape(Circle())
                 .onTapGesture(perform: micAction)
@@ -103,7 +144,7 @@ struct BottomBar: View {
     private func tabButton(_ value: AppTab, title: String, icon: String) -> some View {
         let selected = tab == value
         return Button {
-            tab = value
+            withAnimation(tabAnimation) { tab = value }
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: selected ? icon + ".fill" : icon)
@@ -120,6 +161,22 @@ struct BottomBar: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+}
+
+/// A ring that keeps expanding out from the mic button and fading while listening.
+private struct ExpandingRing: View {
+    @State private var expanded = false
+
+    var body: some View {
+        Circle()
+            .stroke(Theme.accent, lineWidth: 2)
+            .frame(width: 64, height: 64)
+            .scaleEffect(expanded ? 1.75 : 1)
+            .opacity(expanded ? 0 : 0.7)
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.3).repeatForever(autoreverses: false)) { expanded = true }
+            }
     }
 }
 

@@ -334,6 +334,7 @@ struct SavedChordView: View {
                         renaming = true
                     } label: { Label("Rename", systemImage: "pencil") }
                     Button(role: .destructive) {
+                        Haptics.warning()
                         confirmDelete = true
                     } label: { Label("Delete", systemImage: "trash") }
                 } label: {
@@ -366,6 +367,7 @@ struct SavedChordView: View {
                 capo: chord.capo,
                 stringLabels: chord.tuning.stringNames,
                 highlightedStrings: player.activeStrings,
+                vibratingSince: player.vibratingSince,
                 noteName: { string in
                     guard let note = chord.shape.notesByString(in: chord.soundingTuning)[string] else { return nil }
                     return chord.analysis.best?.name(for: note.pitchClass) ?? note.pitchClass.defaultName

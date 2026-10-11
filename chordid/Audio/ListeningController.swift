@@ -117,6 +117,7 @@ final class ListeningController {
         let openName = session.currentString.map { model?.soundingTuning.stringNames[$0] ?? "" } ?? ""
         switch session.hear(note) {
         case .placed:
+            Haptics.noteAccepted()
             problem = nil
             apply(session)
         case .tooLow(_, let note):
