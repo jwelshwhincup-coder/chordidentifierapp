@@ -4,7 +4,7 @@ import Testing
 
 /// A shape, the tuning it's played in, and the chord symbol we expect.
 /// Expected symbols are written with ASCII b/# and converted to ♭/♯.
-struct ShapeCase: CustomTestStringConvertible, Sendable {
+nonisolated struct ShapeCase: CustomTestStringConvertible, Sendable {
     let shape: String
     let tuning: String
     let expected: String
@@ -33,7 +33,7 @@ private func identify(_ shape: String, _ tuningID: String = "standard") -> Chord
 }
 
 struct ChordEngineShapeTests {
-    static let openChords: [ShapeCase] = [
+    nonisolated static let openChords: [ShapeCase] = [
         .init("x32010", "C"),
         .init("320003", "G"),
         .init("320033", "G"),
@@ -54,7 +54,7 @@ struct ChordEngineShapeTests {
         .init("x2343x", "Bdim"),
     ]
 
-    static let barreChords: [ShapeCase] = [
+    nonisolated static let barreChords: [ShapeCase] = [
         .init("133211", "F"),
         .init("133111", "Fm"),
         .init("x13331", "Bb"),
@@ -69,7 +69,7 @@ struct ChordEngineShapeTests {
         .init("x24232", "Bm7"),
     ]
 
-    static let sevenths: [ShapeCase] = [
+    nonisolated static let sevenths: [ShapeCase] = [
         .init("x32310", "C7"),
         .init("320001", "G7"),
         .init("xx0212", "D7"),
@@ -88,14 +88,14 @@ struct ChordEngineShapeTests {
         .init("x3434x", "Cm7b5"),
     ]
 
-    static let sixths: [ShapeCase] = [
+    nonisolated static let sixths: [ShapeCase] = [
         .init("320000", "G6", "standard", "not Em7/G"),
         .init("x02222", "A6"),
         .init("xx0201", "Dm6", "standard", "not Bm7b5/D"),
         .init("x32210", "Am/C", "standard", "6th chords need their 5th, so C–E–A is Am/C"),
     ]
 
-    static let slashChords: [ShapeCase] = [
+    nonisolated static let slashChords: [ShapeCase] = [
         .init("032010", "C/E"),
         .init("2x0232", "D/F#"),
         .init("x20003", "G/B"),
@@ -105,14 +105,14 @@ struct ChordEngineShapeTests {
         .init("x3x232", "D7/C"),
     ]
 
-    static let powerChords: [ShapeCase] = [
+    nonisolated static let powerChords: [ShapeCase] = [
         .init("355xxx", "G5"),
         .init("x355xx", "C5"),
         .init("133xxx", "F5"),
         .init("x022xx", "A5"),
     ]
 
-    static let jazz: [ShapeCase] = [
+    nonisolated static let jazz: [ShapeCase] = [
         .init("x32333", "C9"),
         .init("020102", "E9"),
         .init("022032", "Em9"),
@@ -124,7 +124,7 @@ struct ChordEngineShapeTests {
         .init("x32233", "C6/9"),
     ]
 
-    static let altTunings: [ShapeCase] = [
+    nonisolated static let altTunings: [ShapeCase] = [
         .init("000000", "Dsus4", "dadgad"),
         .init("004200", "D", "dadgad"),
         .init("002200", "Dsus2", "dadgad"),

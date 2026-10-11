@@ -5,8 +5,12 @@ import SwiftUI
 struct FretboardView: View {
     let tuning: Tuning
     let shape: ChordShape
+    /// Capo fret. Dots are relative to the capo; fret numbers and inlays show the real fret.
+    var capo: Int = 0
     /// Strings drawn in the accent colour (listening / strumming).
     var highlightedStrings: Set<Int> = []
+    /// While listening: the string being listened for. Strings after it show no marker yet.
+    var listeningString: Int?
     /// Spelled note name for the dot on a string.
     var noteName: (Int) -> String? = { _ in nil }
     /// nil makes the fretboard read-only.
@@ -17,6 +21,7 @@ struct FretboardView: View {
     static let nutHeight: CGFloat = 4
     static let headerHeight: CGFloat = 70
     private static let dotSize: CGFloat = 31
+    private var fretCount: Int { maxFret - capo }
     private static let inlayFrets: Set<Int> = [3, 5, 7, 9, 15, 17, 19, 21]
     private static let doubleInlayFrets: Set<Int> = [12, 24]
     private static let stringWidths: [CGFloat] = [3, 2.6, 2.2, 1.8, 1.5, 1.2]
@@ -48,6 +53,16 @@ struct FretboardView: View {
                         board(m)
                     }
                     .onAppear { scrollToShape(proxy) }
+                    .onChange(of: shape) { old, new in
+                        // While listening, bring a newly heard note into view.
+                        guard listeningString != nil || new.isEmpty else { return }
+                        if new.isEmpty { proxy.scrollTo(1, anchor: .top); return }
+                        for (before, after) in zip(old.frets, new.frets) where before != after {
+                            if let fret = after, fret > 0 {
+                                withAnimation(.easeInOut(duration: 0.3)) { proxy.scrollTo(fret, anchor: .center) }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -83,7 +98,16 @@ struct FretboardView: View {
     @ViewBuilder
     private func marker(for string: Int, highlighted: Bool) -> some View {
         let color = highlighted ? Theme.accent : Theme.text
-        switch shape.frets[string] {
+        if let listening = listeningString, string >= listening {
+            if string == listening {
+                Circle()
+                    .strokeBorder(Theme.accent, lineWidth: 2.6)
+                    .frame(width: 17, height: 17)
+            } else {
+                Color.clear
+            }
+        } else {
+            switch shape.frets[string] {
         case nil:
             Image(systemName: "xmark")
                 .font(.system(size: 15, weight: .medium))
@@ -94,13 +118,14 @@ struct FretboardView: View {
                 .frame(width: 15, height: 15)
         default:
             Color.clear
+            }
         }
     }
 
     // MARK: - Board
 
     private func board(_ m: Metrics) -> some View {
-        let height = Self.nutHeight + Self.fretHeight * CGFloat(maxFret) + 16
+        let height = Self.nutHeight + Self.fretHeight * CGFloat(fretCount) + 16
         return ZStack(alignment: .topLeading) {
             Canvas { context, size in
                 drawBoard(context: &context, size: size, m: m)
@@ -109,7 +134,7 @@ struct FretboardView: View {
             // Invisible anchors so we can scroll to a fret.
             VStack(spacing: 0) {
                 Color.clear.frame(height: Self.nutHeight)
-                ForEach(1...maxFret, id: \.self) { fret in
+                ForEach(1...fretCount, id: \.self) { fret in
                     Color.clear.frame(height: Self.fretHeight).id(fret)
                 }
             }
@@ -128,7 +153,7 @@ struct FretboardView: View {
             SpatialTapGesture().onEnded { value in
                 guard let onTapFret, let string = m.string(at: value.location.x) else { return }
                 let fret = Int((value.location.y - Self.nutHeight) / Self.fretHeight) + 1
-                if (1...maxFret).contains(fret) { onTapFret(string, fret) }
+                if (1...fretCount).contains(fret) { onTapFret(string, fret) }
             },
             including: onTapFret == nil ? .none : .all
         )
@@ -152,8 +177,9 @@ struct FretboardView: View {
         let first = m.x(0), last = m.x(tuning.stringCount - 1)
         let top = Self.nutHeight
 
-        // Fret lines and inlays
-        for fret in 1...maxFret {
+        // Fret lines and inlays. `fret` counts from the capo; inlays and numbers use the real fret.
+        for fret in 1...fretCount {
+            let realFret = capo + fret
             let y = top + CGFloat(fret) * Self.fretHeight
             var line = Path()
             line.move(to: CGPoint(x: first, y: y))
@@ -163,13 +189,13 @@ struct FretboardView: View {
             let centreY = y - Self.fretHeight / 2
             let r: CGFloat = 4.5
             var xs: [CGFloat] = []
-            if Self.inlayFrets.contains(fret) { xs = [(m.x(2) + m.x(3)) / 2] }
-            if Self.doubleInlayFrets.contains(fret) { xs = [(m.x(1) + m.x(2)) / 2, (m.x(3) + m.x(4)) / 2] }
+            if Self.inlayFrets.contains(realFret) { xs = [(m.x(2) + m.x(3)) / 2] }
+            if Self.doubleInlayFrets.contains(realFret) { xs = [(m.x(1) + m.x(2)) / 2, (m.x(3) + m.x(4)) / 2] }
             for x in xs {
                 context.fill(Path(ellipseIn: CGRect(x: x - r, y: centreY - r, width: 2 * r, height: 2 * r)), with: .color(Theme.inlay))
             }
             if !xs.isEmpty || fret == 1 {
-                context.draw(Text("\(fret)").font(BrandFont.font(11, .semibold)).foregroundStyle(Theme.tertiaryText),
+                context.draw(Text("\(realFret)").font(BrandFont.font(11, .semibold)).foregroundStyle(Theme.tertiaryText),
                              at: CGPoint(x: first / 2 - 2, y: centreY))
             }
         }
@@ -188,15 +214,15 @@ struct FretboardView: View {
             context.fill(Path(rect), with: .color(highlighted ? Theme.accent : Theme.stringColor))
         }
 
-        // Nut
+        // Nut, or the capo bar when a capo is on
         let nut = CGRect(x: first - 9, y: 0, width: last - first + 18, height: Self.nutHeight)
-        context.fill(Path(roundedRect: nut, cornerRadius: 2), with: .color(Theme.text))
+        context.fill(Path(roundedRect: nut, cornerRadius: 2), with: .color(capo > 0 ? Theme.accent : Theme.text))
     }
 
     // MARK: - Helpers
 
     private func scrollToShape(_ proxy: ScrollViewProxy) {
-        let fretted = shape.frets.compactMap { $0 }.filter { $0 > 0 }
+        let fretted = shape.frets.compactMap { $0 }.filter { $0 > 0 && $0 <= fretCount }
         guard let highest = fretted.max(), highest > 4, let lowest = fretted.min() else { return }
         proxy.scrollTo(max(lowest - 1, 1), anchor: .top)
     }
@@ -210,7 +236,7 @@ struct FretboardView: View {
     }
 
     private var accessibilitySummary: String {
-        (0..<tuning.stringCount).map { "\(tuning.stringNames[$0]) \(markerDescription($0))" }.joined(separator: ", ")
+        (capo > 0 ? "Capo on fret \(capo). " : "") + (0..<tuning.stringCount).map { "\(tuning.stringNames[$0]) \(markerDescription($0))" }.joined(separator: ", ")
     }
 }
 

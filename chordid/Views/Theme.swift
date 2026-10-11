@@ -12,6 +12,7 @@ enum Theme {
     static let accentSoft = Color(hex: 0xE8EDFF)
     static let searchFill = Color(hex: 0xE9EBEF)
     static let divider = Color(hex: 0xE6E8EC)
+    static let warning = Color(hex: 0xC2410C)
 
     // Fretboard
     static let stringColor = Color(hex: 0x9AA0AB)
