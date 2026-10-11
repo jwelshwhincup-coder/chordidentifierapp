@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="What's That Chord">
+<rect width="200" height="200" rx="46" fill="#FFFFFF"/>
+<g stroke="#121417" stroke-opacity=".14" stroke-width="3" stroke-linecap="round" fill="none">
+<path d="M44 40V172M72 40V172M100 40V172M128 40V172M156 40V172"/>
+<path d="M44 84H156M44 128H156M44 172H156"/>
+</g>
+<path d="M44 40H156" stroke="#121417" stroke-opacity=".4" stroke-width="7" stroke-linecap="round" fill="none"/>
+<path d="M72 74A28 28 0 1 1 116 97Q100 106 100 124" stroke="#FFFFFF" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<path d="M72 74A28 28 0 1 1 116 97Q100 106 100 124" stroke="#121417" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<circle cx="100" cy="151" r="19" fill="#FFFFFF"/>
+<circle cx="100" cy="151" r="12" fill="#2B5BFF"/>
+</svg>
