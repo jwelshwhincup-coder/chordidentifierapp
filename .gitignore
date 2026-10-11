@@ -24,3 +24,4 @@ DerivedData/
 # Scratch
 *.tmp
 AudioPreviews/
+.regenerate-launch-image

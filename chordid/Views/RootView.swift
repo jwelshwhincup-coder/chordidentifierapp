@@ -16,6 +16,10 @@ struct RootView: View {
     @State private var sheetShown = false
     @Query private var saved: [SavedChord]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The logo screen for this launch; nil once it has faded away.
+    @State private var launchStyle: LaunchStyle? = LaunchStyle.choose(
+        hasLaunchedBefore: UserDefaults.standard.bool(forKey: LaunchStyle.hasLaunchedKey),
+        reduceMotion: UIAccessibility.isReduceMotionEnabled)
 
     var body: some View {
         ZStack {
@@ -59,6 +63,15 @@ struct RootView: View {
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: sheetShown)
         .background(Color.black.ignoresSafeArea())
         .environment(\.tabAnimation, tabAnimation)
+        .overlay {
+            if let launchStyle {
+                LogoScreen(style: launchStyle, onDotLanded: { Haptics.fretTap() }) {
+                    UserDefaults.standard.set(true, forKey: LaunchStyle.hasLaunchedKey)
+                    withAnimation(.easeInOut(duration: launchStyle.fadeSeconds)) { self.launchStyle = nil }
+                }
+                .transition(.opacity)
+            }
+        }
         .onChange(of: tab) { _, newTab in
             if newTab != .chordID { listener.stop() }
             player.stop()
