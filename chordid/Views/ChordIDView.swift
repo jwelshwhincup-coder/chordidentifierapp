@@ -9,6 +9,8 @@ struct ChordIDView: View {
     var player: GuitarPlayer
     /// Tells the shell a sheet is up, so it can scale the screen back.
     @Binding var sheetShown: Bool
+    /// The first-launch demo is playing over this screen.
+    var demoRunning = false
     @State private var showTuning = false
     @State private var showCapo = false
     @State private var showSettings = false
@@ -92,10 +94,11 @@ struct ChordIDView: View {
             SettingsSheet()
         }
         .onChange(of: showTuning || showCapo || showSettings) { _, shown in sheetShown = shown }
+        .environment(\.demoAnchorsEnabled, true)
         .onAppear { Haptics.prepare() }
         // Success haptic once a chord settles (not on every intermediate tap or mic step).
         .task(id: model.analysis.best?.symbol) {
-            guard let best = model.analysis.best, best.kind == .chord, !listener.isListening else { return }
+            guard let best = model.analysis.best, best.kind == .chord, !listener.isListening, !demoRunning else { return }
             try? await Task.sleep(for: .milliseconds(450))
             if !Task.isCancelled { Haptics.chordNamed() }
         }
@@ -116,6 +119,7 @@ struct ChordIDView: View {
                 }
                 .buttonStyle(PillButtonStyle(kind: .secondary))
                 .frame(maxWidth: 140)
+                .demoTarget(.strum)
                 .disabled(model.shape.isEmpty || !player.isAvailable)
                 .accessibilityHint("Plays the chord")
 
@@ -124,6 +128,7 @@ struct ChordIDView: View {
                     .disabled(model.shape.isEmpty)
             }
         }
+        .demoTarget(.result)
     }
 }
 

@@ -16,6 +16,8 @@ final class ListeningController {
     }
 
     private(set) var phase: Phase = .idle
+    /// Showing the listening screen for the demo, with no microphone running.
+    private(set) var isPreview = false
     private(set) var session: ListeningSession?
     /// A problem with the last note heard, e.g. too low for the string.
     private(set) var problem: String?
@@ -78,7 +80,29 @@ final class ListeningController {
         phase = .listening
     }
 
+    /// The demo's listening screen: "Play the E string", without touching the
+    /// microphone or asking for permission.
+    func beginPreview(model: ChordIDModel) {
+        stop()
+        self.model = model
+        model.clear()
+        session = ListeningSession(tuning: model.tuning, capo: model.capo)
+        problem = nil
+        level = 0.3
+        isPreview = true
+        phase = .listening
+    }
+
+    func endPreview() {
+        guard isPreview else { return }
+        isPreview = false
+        phase = .idle
+        session = nil
+        level = 0
+    }
+
     func stop() {
+        if isPreview { endPreview(); return }
         // Nothing to tear down unless the mic is on (avoids touching the audio session needlessly).
         guard phase == .listening || tracker.isRunning else { return }
         tracker.stop()

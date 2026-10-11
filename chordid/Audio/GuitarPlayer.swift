@@ -50,6 +50,15 @@ final class GuitarPlayer {
         }
     }
 
+    /// Lights and vibrates the strings as a strum would, without any sound (used by the demo).
+    func previewStrum(shape: ChordShape, tuning: Tuning) {
+        guard let library, !shape.isEmpty else { return }
+        strumID += 1
+        var rng = SystemRandomNumberGenerator()
+        let events = StrumPlanner(source: library).plan(shape: shape, tuning: tuning, style: style, rng: &rng)
+        highlight(events, latency: 0, ticks: false)
+    }
+
     func stop() {
         strumID += 1
         highlightTask?.cancel()
@@ -84,7 +93,7 @@ final class GuitarPlayer {
     }
 
     /// Light each string as its note starts.
-    private func highlight(_ events: [StrumEvent], latency: TimeInterval) {
+    private func highlight(_ events: [StrumEvent], latency: TimeInterval, ticks: Bool = true) {
         highlightTask?.cancel()
         activeStrings = []
         vibratingSince = [:]
@@ -108,7 +117,7 @@ final class GuitarPlayer {
                 case .on:
                     self.activeStrings.insert(change.string)
                     self.vibratingSince[change.string] = .now
-                    Haptics.strumTick()
+                    if ticks { Haptics.strumTick() }
                 case .off:
                     self.activeStrings.remove(change.string)
                 case .still:

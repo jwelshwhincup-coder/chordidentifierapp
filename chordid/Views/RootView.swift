@@ -10,6 +10,7 @@ struct RootView: View {
     @State private var model = ChordIDModel()
     @State private var listener = ListeningController()
     @State private var player = GuitarPlayer()
+    @State private var demo = DemoController()
     @State private var tab: AppTab = .chordID
     @State private var showDebug = false
     @State private var libraryPath: [PersistentIdentifier] = []
@@ -27,7 +28,8 @@ struct RootView: View {
             // Tabs slide: Chord ID lives to the left, Library to the right.
             switch tab {
             case .chordID:
-                ChordIDView(model: model, listener: listener, player: player, sheetShown: $sheetShown)
+                ChordIDView(model: model, listener: listener, player: player, sheetShown: $sheetShown,
+                            demoRunning: demo.isRunning)
                     .transition(reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity))
             case .library:
                 LibraryView(path: $libraryPath, player: player)
@@ -37,7 +39,7 @@ struct RootView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             // The saved-chord screen hides the bar.
             if tab != .library || libraryPath.isEmpty {
-            BottomBar(tab: $tab, isListening: listener.isListening,
+            BottomBar(tab: $tab, isListening: listener.isListening && !listener.isPreview,
                       highlightMic: tab == .library && saved.isEmpty, micAction: {
                 withAnimation(tabAnimation) { tab = .chordID }
                 // Playback and the microphone never run at the same time.
@@ -49,10 +51,20 @@ struct RootView: View {
                 player.stop()
                 showDebug = true
             })
+            .environment(\.demoAnchorsEnabled, true)
             .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(.easeInOut(duration: 0.25), value: libraryPath.isEmpty)
+        .overlayPreferenceValue(DemoAnchorKey.self) { anchors in
+            if demo.isRunning {
+                GeometryReader { proxy in
+                    DemoOverlay(demo: demo, rects: anchors.mapValues { proxy[$0] })
+                }
+                .ignoresSafeArea()
+                .transition(.opacity)
+            }
+        }
         // A sheet scales the screen behind it back slightly.
         .mask {
             // Masking with a full-screen shape keeps the edge-to-edge background visible.
@@ -68,6 +80,8 @@ struct RootView: View {
                 LogoScreen(style: launchStyle, onDotLanded: { Haptics.fretTap() }) {
                     UserDefaults.standard.set(true, forKey: LaunchStyle.hasLaunchedKey)
                     withAnimation(.easeInOut(duration: launchStyle.fadeSeconds)) { self.launchStyle = nil }
+                    // The demo runs once, straight after the logo screen.
+                    if !demo.hasSeen { startDemo() }
                 }
                 .transition(.opacity)
             }
@@ -79,6 +93,21 @@ struct RootView: View {
         .sheet(isPresented: $showDebug) {
             PitchDebugView(tuning: model.soundingTuning)
         }
+        .environment(\.replayDemo) {
+            // Wait for the Settings sheet to finish closing.
+            Task {
+                try? await Task.sleep(for: .milliseconds(450))
+                startDemo()
+            }
+        }
+    }
+
+    private func startDemo() {
+        if tab != .chordID { tab = .chordID }
+        demo.onStartPlaying = {
+            listener.toggle(model: model)
+        }
+        demo.start(model: model, listener: listener, player: player)
     }
 
     private var tabAnimation: Animation {
@@ -124,6 +153,7 @@ struct BottomBar: View {
             Image(systemName: isListening ? "stop.fill" : "mic")
                 .font(.system(size: 24, weight: .medium))
                 .foregroundStyle(.white)
+                .demoTarget(.mic)
                 // The icon morphs between mic and stop.
                 .contentTransition(.symbolEffect(.replace.downUp))
                 .frame(width: 64, height: 64)

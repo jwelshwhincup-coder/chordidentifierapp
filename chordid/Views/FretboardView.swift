@@ -83,6 +83,11 @@ struct FretboardView: View {
 
     private func header(_ m: Metrics) -> some View {
         ZStack(alignment: .topLeading) {
+            Color.clear
+                .frame(width: m.x(tuning.stringCount - 1) - m.x(0) + Theme.minTouch, height: Theme.minTouch)
+                .demoTarget(.markerRow)
+                .position(x: (m.x(0) + m.x(tuning.stringCount - 1)) / 2, y: 52)
+                .allowsHitTesting(false)
             ForEach(0..<tuning.stringCount, id: \.self) { string in
                 let highlighted = highlightedStrings.contains(string)
                 Text(label(string))
@@ -92,6 +97,7 @@ struct FretboardView: View {
 
                 marker(for: string, highlighted: highlighted)
                     .frame(width: max(m.spacing, Theme.minTouch), height: Theme.minTouch)
+                    .demoTarget(.marker(string))
                     .contentShape(Rectangle())
                     .onTapGesture { onTapMarker?(string) }
                     .position(x: m.x(string), y: 52)
@@ -164,6 +170,17 @@ struct FretboardView: View {
                 }
             }
             .allowsHitTesting(false)
+
+            // Spots the first-launch demo taps.
+            ForEach(0..<tuning.stringCount, id: \.self) { string in
+                ForEach(1...3, id: \.self) { fret in
+                    Color.clear
+                        .frame(width: Theme.minTouch, height: Theme.minTouch)
+                        .demoTarget(.fret(string: string, fret: fret))
+                        .position(x: m.x(string), y: Self.nutHeight + (CGFloat(fret) - 0.5) * Self.fretHeight)
+                        .allowsHitTesting(false)
+                }
+            }
 
             // Keyed by string and fret, so moving a dot springs out of the old spot and into the new.
             ForEach(dots, id: \.self) { item in

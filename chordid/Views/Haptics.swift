@@ -45,6 +45,7 @@ enum Haptics {
 struct SettingsSheet: View {
     @AppStorage(Haptics.enabledKey) private var hapticsEnabled = true
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.replayDemo) private var replayDemo
 
     var body: some View {
         VStack(spacing: 0) {
@@ -79,6 +80,29 @@ struct SettingsSheet: View {
                     .padding(18)
                     .background(Theme.background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
+                    Button {
+                        dismiss()
+                        replayDemo()
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Replay demo")
+                                    .font(.brandHeadline)
+                                    .foregroundStyle(Theme.text)
+                                Text("See the quick tour of Chord ID again.")
+                                    .font(.brandSubheadline)
+                                    .foregroundStyle(Theme.secondaryText)
+                            }
+                            Spacer()
+                            Image(systemName: "play.circle")
+                                .font(.system(size: 22, weight: .regular))
+                                .foregroundStyle(Theme.accent)
+                        }
+                        .padding(18)
+                        .background(Theme.background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Credits")
                             .font(.brandHeadline)
@@ -93,7 +117,7 @@ struct SettingsSheet: View {
             }
         }
         .background(Theme.card)
-        .presentationDetents([.height(400), .large])
+        .presentationDetents([.height(500), .large])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(32)
     }
