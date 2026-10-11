@@ -106,7 +106,7 @@ nonisolated struct Tuning: Hashable, Codable, Identifiable, Sendable {
 
     /// Open-string names for display, e.g. ["E", "A", "D", "G", "B", "E"].
     var stringNames: [String] {
-        openNotes.map { usesFlats ? Spelling.flatNames[$0.pitchClass.value] : Spelling.sharpNames[$0.pitchClass.value] }
+        openNotes.map { usesFlats ? Spelling.flatNames[$0.pitchClass.value] : $0.pitchClass.defaultName }
     }
 
     var isCustom: Bool { id.hasPrefix("custom") }

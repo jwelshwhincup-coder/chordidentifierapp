@@ -229,6 +229,19 @@ struct ChordEngineBehaviourTests {
         #expect(r.alternatives.map(\.symbol) == ["Gsus2/D"])
     }
 
+    @Test func inversionsAlsoOfferThePlainChord() {
+        let openG = identify("000000", "openG")
+        #expect(openG.best?.symbol == "G/D")
+        #expect(openG.alternatives.first?.symbol == "G")
+        #expect(openG.alternatives.first?.displayName == "G major")
+        #expect(identify("032010").alternatives.first?.symbol == "C")
+        // D under a C triad: D isn't in the chord, so this isn't an inversion and plain "C" isn't offered.
+        let cOverD = ChordEngine.identify([Note("D2")!, Note("C3")!, Note("E3")!, Note("G3")!])
+        #expect(cOverD.best?.symbol == "C/D")
+        #expect(cOverD.best?.rootPosition == nil)
+        #expect(cOverD.best?.toneNames == ["D", "C", "E", "G"])
+    }
+
     @Test func slashBassAvoidsAwkwardSpellings() {
         let symbols = identify("x3211x").alternatives.map(\.symbol)
         #expect(!symbols.contains { $0.contains("B♯") })
@@ -283,6 +296,8 @@ struct MusicModelTests {
         #expect(Tuning.openD.stringNames == ["D", "A", "D", "F♯", "A", "D"])
         #expect(Tuning.openE.stringNames == ["E", "B", "E", "G♯", "B", "E"])
         #expect(Tuning.presets.count == 7)
+        // Custom tunings use the same neutral spelling as the custom tuning editor.
+        #expect(Tuning.custom([Note("Eb2")!, Note("A2")!, Note("D3")!, Note("G3")!, Note("B3")!, Note("E4")!]).stringNames.first == "E♭")
     }
 
     @Test func fretToNoteRespectsTuning() {

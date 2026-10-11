@@ -22,6 +22,13 @@ nonisolated struct ChordName: Hashable, Sendable {
     let score: Double
     /// How each pitch class is spelled in this chord's context.
     let spellings: [Int: String]
+    /// For an inversion like C/E, the plain chord ("C", "C major"). Nil otherwise.
+    var rootPosition: PlainName? = nil
+
+    struct PlainName: Hashable, Sendable {
+        let symbol: String
+        let displayName: String
+    }
 
     /// Name for `pc` in this chord's spelling, falling back to the neutral name.
     func name(for pc: PitchClass) -> String {
@@ -114,7 +121,13 @@ nonisolated enum ChordEngine {
         guard let best = unique.first else {
             return ChordAnalysis(notes: notes, best: unrecognized(pcs), alternatives: [])
         }
-        let alternatives = unique.dropFirst().filter { $0.score >= best.score - alternativeScoreWindow }
+        var alternatives = unique.dropFirst().filter { $0.score >= best.score - alternativeScoreWindow }
+        // An inversion is also just the plain chord: G/D could also be called G.
+        if let plain = best.rootPosition, !alternatives.contains(where: { $0.symbol == plain.symbol }) {
+            alternatives.insert(ChordName(kind: .chord, symbol: plain.symbol, displayName: plain.displayName, detail: nil,
+                                          root: best.root, bass: best.root, type: best.type, toneNames: best.toneNames,
+                                          score: best.score, spellings: best.spellings), at: 0)
+        }
         return ChordAnalysis(notes: notes, best: best, alternatives: Array(alternatives.prefix(maxAlternatives)))
     }
 
@@ -149,6 +162,7 @@ nonisolated enum ChordEngine {
         case "min": displayName = rootName + " minor"
         default: displayName = symbol
         }
+        let plain = ChordName.PlainName(symbol: symbol, displayName: displayName)
         if root != bass {
             var bassName = spellings[bass.value] ?? foreignBassSpelling(bass, rootName: rootName)
             // A lone bass note reads better as C than B♯, F than E♯, etc.
@@ -160,7 +174,8 @@ nonisolated enum ChordEngine {
         }
 
         return ChordName(kind: .chord, symbol: symbol, displayName: displayName, detail: nil,
-                         root: root, bass: bass, type: type, toneNames: toneNames, score: score, spellings: spellings)
+                         root: root, bass: bass, type: type, toneNames: toneNames, score: score, spellings: spellings,
+                         rootPosition: root != bass && !foreignBass ? plain : nil)
     }
 
     private static func singleNote(_ pc: PitchClass) -> ChordName {
