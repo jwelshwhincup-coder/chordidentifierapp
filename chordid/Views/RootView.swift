@@ -8,6 +8,7 @@ enum AppTab: Hashable {
 struct RootView: View {
     @State private var model = ChordIDModel()
     @State private var listener = ListeningController()
+    @State private var player = GuitarPlayer()
     @State private var tab: AppTab = .chordID
     @State private var showDebug = false
 
@@ -15,17 +16,20 @@ struct RootView: View {
         ZStack {
             Theme.background.ignoresSafeArea()
             switch tab {
-            case .chordID: ChordIDView(model: model, listener: listener)
+            case .chordID: ChordIDView(model: model, listener: listener, player: player)
             case .library: LibraryPlaceholderView()
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             BottomBar(tab: $tab, isListening: listener.isListening, micAction: {
                 tab = .chordID
+                // Playback and the microphone never run at the same time.
+                player.stop()
                 listener.toggle(model: model)
             }, micLongPress: {
                 // Hidden: hold the mic button for a second to open the pitch debug view.
                 listener.stop()
+                player.stop()
                 showDebug = true
             })
         }

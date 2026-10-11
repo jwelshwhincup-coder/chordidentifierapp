@@ -317,6 +317,7 @@
 		000000000000000111000000 /* Debug configuration for PBXNativeTarget "chordid" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = M5PFW2NB6K;

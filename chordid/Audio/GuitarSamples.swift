@@ -47,6 +47,8 @@ nonisolated final class GuitarSampleLibrary: SampleSource, @unchecked Sendable {
         if let cached = cache[key] { return cached }
         guard has(key), let url = locate(key.name), var decoded = Self.decode(url) else { return nil }
         Self.normalize(&decoded, layer: key.layer)
+        // Each decoded note is ~1.4 MB; keep memory bounded.
+        if cache.count >= 48 { cache.removeAll(keepingCapacity: true) }
         cache[key] = decoded
         return decoded
     }

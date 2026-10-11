@@ -5,6 +5,7 @@ import SwiftUI
 struct ChordIDView: View {
     @Bindable var model: ChordIDModel
     var listener: ListeningController
+    var player: GuitarPlayer
     @State private var showTuning = false
     @State private var showCapo = false
 
@@ -27,7 +28,9 @@ struct ChordIDView: View {
                 capo: model.capo,
                 // With a capo, keep the tuning's own string names (what you'd call the strings).
                 stringLabels: model.tuning.stringNames,
-                highlightedStrings: listener.session?.currentString.map { [$0] } ?? [],
+                highlightedStrings: listener.isListening
+                    ? (listener.session?.currentString.map { [$0] } ?? [])
+                    : player.activeStrings,
                 listeningString: listener.isListening ? (listener.session?.currentString ?? model.tuning.stringCount) : nil,
                 noteName: { model.noteName(onString: $0) },
                 onTapFret: listener.isListening ? nil : { model.tapFret(string: $0, fret: $1) },
@@ -75,14 +78,16 @@ struct ChordIDView: View {
                        onClear: model.shape.isEmpty ? nil : { model.clear() })
 
             HStack(spacing: 12) {
-                Button {} label: {
+                Button {
+                    player.strum(shape: model.shape, tuning: model.soundingTuning)
+                } label: {
                     Label("Strum", systemImage: "play")
                         .labelStyle(SpacedLabelStyle())
                 }
                 .buttonStyle(PillButtonStyle(kind: .secondary))
                 .frame(maxWidth: 140)
-                .disabled(true)
-                .accessibilityHint("Playback arrives in a later update")
+                .disabled(model.shape.isEmpty || !player.isAvailable)
+                .accessibilityHint("Plays the chord")
 
                 Button("Save to library") {}
                     .buttonStyle(PillButtonStyle(kind: .primaryDark))
@@ -369,6 +374,6 @@ struct ResultView: View {
 }
 
 #Preview {
-    ChordIDView(model: ChordIDModel(), listener: ListeningController())
+    ChordIDView(model: ChordIDModel(), listener: ListeningController(), player: GuitarPlayer())
         .background(Theme.background)
 }
