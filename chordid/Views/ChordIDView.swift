@@ -7,6 +7,7 @@ struct ChordIDView: View {
     @Bindable var model: ChordIDModel
     var listener: ListeningController
     var player: GuitarPlayer
+    var store: ProStore
     /// Tells the shell a sheet is up, so it can scale the screen back.
     @Binding var sheetShown: Bool
     /// The first-launch demo is playing over this screen.
@@ -15,6 +16,7 @@ struct ChordIDView: View {
     @State private var showCapo = false
     @State private var showSettings = false
     @State private var toast: String?
+    @State private var paywall: PaywallReason?
     @Environment(\.modelContext) private var context
 
     var body: some View {
@@ -22,6 +24,7 @@ struct ChordIDView: View {
             SetupBar(
                 tuningName: model.tuning.name,
                 capo: model.capo,
+                capoLocked: !store.isPro,
                 onTuning: { showTuning = true },
                 onCapo: { showCapo = true },
                 onSettings: { showSettings = true }
@@ -85,15 +88,18 @@ struct ChordIDView: View {
             }
         }
         .sheet(isPresented: $showTuning) {
-            TuningSheet(model: model)
+            TuningSheet(model: model, store: store)
         }
         .sheet(isPresented: $showCapo) {
-            CapoSheet(model: model)
+            CapoSheet(model: model, store: store)
+        }
+        .sheet(item: $paywall) { reason in
+            PaywallSheet(reason: reason, store: store) { save() }
         }
         .sheet(isPresented: $showSettings) {
             SettingsSheet()
         }
-        .onChange(of: showTuning || showCapo || showSettings) { _, shown in sheetShown = shown }
+        .onChange(of: showTuning || showCapo || showSettings || paywall != nil) { _, shown in sheetShown = shown }
         .environment(\.demoAnchorsEnabled, true)
         .onAppear { Haptics.prepare() }
         // Success haptic once a chord settles (not on every intermediate tap or mic step).
@@ -137,6 +143,17 @@ extension ChordIDView {
     /// tuning and capo is only saved once.
     fileprivate func save() {
         let name = model.analysis.best?.displayName ?? "Chord"
+        guard !model.shape.isEmpty else { return }
+        if SavedChord.exists(shape: model.shape, tuning: model.tuning, capo: model.capo, in: context) {
+            show("Already in your library")
+            return
+        }
+        let saved = SavedChord.savedNames(in: context)
+        guard ProGate.allowsSave(savedCount: saved.count, isPro: store.isPro) else {
+            // Library full: offer Pro, naming the chord they're saving. Nothing already saved is touched.
+            paywall = .libraryFull(newChord: model.analysis.best?.symbol ?? name, saved: Array(saved.prefix(ProGate.freeSaveLimit)))
+            return
+        }
         let result = SavedChord.save(shape: model.shape, tuning: model.tuning, capo: model.capo, name: name, in: context)
         switch result {
         case .saved:
@@ -162,6 +179,7 @@ extension ChordIDView {
 struct SetupBar: View {
     let tuningName: String
     let capo: Int
+    var capoLocked = false
     let onTuning: () -> Void
     let onCapo: () -> Void
     let onSettings: () -> Void
@@ -178,7 +196,8 @@ struct SetupBar: View {
                 Rectangle()
                     .fill(Theme.divider)
                     .frame(width: 1, height: 28)
-                segment(caption: "Capo", value: capo == 0 ? "None" : "Fret \(capo)", padding: 16, action: onCapo)
+                segment(caption: "Capo", value: capo == 0 ? "None" : "Fret \(capo)", padding: 16,
+                        locked: capoLocked, action: onCapo)
                     .frame(width: 112)
                     .accessibilityLabel(capo == 0 ? "No capo" : "Capo on fret \(capo)")
                     .accessibilityHint("Opens the capo picker")
@@ -197,14 +216,22 @@ struct SetupBar: View {
         }
     }
 
-    private func segment(caption: String, value: String, padding: CGFloat, action: @escaping () -> Void) -> some View {
+    private func segment(caption: String, value: String, padding: CGFloat, locked: Bool = false,
+                         action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(caption.uppercased())
-                        .font(BrandFont.font(11, .semibold, relativeTo: .caption2))
-                        .tracking(0.8)
-                        .foregroundStyle(Theme.secondaryText)
+                    HStack(spacing: 4) {
+                        Text(caption.uppercased())
+                            .font(BrandFont.font(11, .semibold, relativeTo: .caption2))
+                            .tracking(0.8)
+                        if locked {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .accessibilityLabel("Pro")
+                        }
+                    }
+                    .foregroundStyle(Theme.secondaryText)
                     Text(value)
                         .font(.brandBodySemibold)
                         .foregroundStyle(Theme.text)
@@ -336,11 +363,15 @@ struct MicProblemView: View {
 /// Bottom sheet for the capo fret, styled like the tuning sheet.
 struct CapoSheet: View {
     @Bindable var model: ChordIDModel
+    let store: ProStore
     @Environment(\.dismiss) private var dismiss
     @State private var staged: Int
+    @State private var paywall: PaywallReason?
+    @State private var closeAfterPaywall = false
 
-    init(model: ChordIDModel) {
+    init(model: ChordIDModel, store: ProStore) {
         self.model = model
+        self.store = store
         _staged = State(initialValue: model.capo)
     }
 
@@ -368,18 +399,27 @@ struct CapoSheet: View {
             LazyVGrid(columns: columns, spacing: 12) {
                 ForEach(0...ChordIDModel.maxCapo, id: \.self) { fret in
                     let selected = staged == fret
+                    // A capo a free user already had stays usable; new frets need Pro.
+                    let locked = !ProGate.allowsCapo(fret, isPro: store.isPro) && fret != model.capo
                     Button {
-                        staged = fret
+                        if locked { paywall = .capo(fret: fret) } else { staged = fret }
                     } label: {
-                        Text(fret == 0 ? "None" : "\(fret)")
-                            .font(.brandHeadline)
-                            .foregroundStyle(selected ? .white : Theme.text)
+                        HStack(spacing: 4) {
+                            if locked {
+                                Image(systemName: "lock")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(Theme.secondaryText)
+                            }
+                            Text(fret == 0 ? "None" : "\(fret)")
+                                .font(.brandHeadline)
+                                .foregroundStyle(selected ? .white : Theme.text)
+                        }
                             .frame(maxWidth: .infinity, minHeight: 56)
                             .background(selected ? Theme.accent : Theme.background,
                                         in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(fret == 0 ? "No capo" : "Capo on fret \(fret)")
+                    .accessibilityLabel((fret == 0 ? "No capo" : "Capo on fret \(fret)") + (locked ? ", Pro" : ""))
                     .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
@@ -394,6 +434,12 @@ struct CapoSheet: View {
             Spacer(minLength: 0)
         }
         .background(Theme.card)
+        .sheet(item: $paywall, onDismiss: { if closeAfterPaywall { dismiss() } }) { reason in
+            PaywallSheet(reason: reason, store: store) {
+                if case .capo(let fret) = reason { model.setCapo(fret) }
+                closeAfterPaywall = true
+            }
+        }
         .presentationDetents([.height(440), .large])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(32)
@@ -510,7 +556,7 @@ struct ResultView: View {
 }
 
 #Preview {
-    ChordIDView(model: ChordIDModel(), listener: ListeningController(), player: GuitarPlayer(), sheetShown: .constant(false))
+    ChordIDView(model: ChordIDModel(), listener: ListeningController(), player: GuitarPlayer(), store: ProStore(), sheetShown: .constant(false))
         .modelContainer(for: SavedChord.self, inMemory: true)
         .background(Theme.background)
 }

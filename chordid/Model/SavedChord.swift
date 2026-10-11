@@ -75,6 +75,18 @@ final class SavedChord {
 
     enum SaveResult: Equatable { case saved, alreadySaved, nothingToSave }
 
+    static func exists(shape: ChordShape, tuning: Tuning, capo: Int, in context: ModelContext) -> Bool {
+        let key = makeKey(shape: shape, tuning: tuning, capo: capo)
+        let existing = FetchDescriptor<SavedChord>(predicate: #Predicate { $0.key == key })
+        return ((try? context.fetchCount(existing)) ?? 0) > 0
+    }
+
+    /// Names of saved chords, oldest first.
+    static func savedNames(in context: ModelContext) -> [String] {
+        let all = FetchDescriptor<SavedChord>(sortBy: [SortDescriptor(\.createdAt)])
+        return ((try? context.fetch(all)) ?? []).map(\.name)
+    }
+
     /// Saves the chord unless that exact shape, tuning and capo is already in the library.
     @discardableResult
     static func save(shape: ChordShape, tuning: Tuning, capo: Int, name: String, in context: ModelContext) -> SaveResult {

@@ -3,13 +3,23 @@ import SwiftUI
 /// Bottom sheet for choosing a tuning. Changes apply only when the check is tapped.
 struct TuningSheet: View {
     @Bindable var model: ChordIDModel
+    let store: ProStore
     @Environment(\.dismiss) private var dismiss
     @State private var staged: Tuning
     @State private var showCustom = false
+    @State private var paywall: PaywallReason?
+    /// What to do once the paywall has closed after a purchase.
+    @State private var afterPaywall: (() -> Void)?
 
-    init(model: ChordIDModel) {
+    init(model: ChordIDModel, store: ProStore) {
         self.model = model
+        self.store = store
         _staged = State(initialValue: model.tuning)
+    }
+
+    /// A tuning a free user already had stays usable; picking a new one needs Pro.
+    private func isLocked(_ tuning: Tuning) -> Bool {
+        !ProGate.allows(tuning: tuning, isPro: store.isPro) && tuning != model.tuning
     }
 
     var body: some View {
@@ -19,16 +29,28 @@ struct TuningSheet: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(Tuning.presets) { preset in
-                            row(name: preset.name, notes: preset.stringNames, selected: staged == preset) {
-                                staged = preset
+                            row(name: preset.name, notes: preset.stringNames, selected: staged == preset,
+                                locked: isLocked(preset)) {
+                                if isLocked(preset) {
+                                    afterPaywall = { model.tuning = preset; dismiss() }
+                                    paywall = .tuning(name: preset.name)
+                                } else {
+                                    staged = preset
+                                }
                             }
                         }
                         row(name: "Custom tuning",
                             notes: staged.isCustom ? staged.stringNames : nil,
                             selected: staged.isCustom,
+                            locked: !store.isPro && !model.tuning.isCustom,
                             chevron: true,
                             divider: false) {
-                            showCustom = true
+                            if !store.isPro && !model.tuning.isCustom {
+                                afterPaywall = { showCustom = true }
+                                paywall = .tuning(name: PaywallReason.customName)
+                            } else {
+                                showCustom = true
+                            }
                         }
                     }
                     .padding(.horizontal, Theme.sideMargin)
@@ -42,6 +64,13 @@ struct TuningSheet: View {
                     staged = custom
                 }
             }
+        }
+        .sheet(item: $paywall, onDismiss: {
+            // Only complete the tapped action if Pro is now unlocked; closing without buying changes nothing.
+            if store.isPro { afterPaywall?() }
+            afterPaywall = nil
+        }) { reason in
+            PaywallSheet(reason: reason, store: store) {}
         }
         .presentationDetents([.fraction(0.74), .large])
         .presentationDragIndicator(.visible)
@@ -69,7 +98,7 @@ struct TuningSheet: View {
         .padding(.bottom, 16)
     }
 
-    private func row(name: String, notes: [String]?, selected: Bool, chevron: Bool = false,
+    private func row(name: String, notes: [String]?, selected: Bool, locked: Bool = false, chevron: Bool = false,
                      divider: Bool = true, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 0) {
@@ -79,6 +108,12 @@ struct TuningSheet: View {
                         .foregroundStyle(selected ? Theme.accent : Theme.text)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
+                    if locked {
+                        Image(systemName: "lock")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Theme.secondaryText)
+                            .accessibilityLabel("Pro")
+                    }
                     Spacer(minLength: 8)
                     if let notes {
                         // Space between notes rather than letter-spacing, so "E♭" stays together.

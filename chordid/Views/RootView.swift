@@ -11,6 +11,7 @@ struct RootView: View {
     @State private var listener = ListeningController()
     @State private var player = GuitarPlayer()
     @State private var demo = DemoController()
+    @State private var store = ProStore()
     @State private var tab: AppTab = .chordID
     @State private var showDebug = false
     @State private var libraryPath: [PersistentIdentifier] = []
@@ -28,7 +29,7 @@ struct RootView: View {
             // Tabs slide: Chord ID lives to the left, Library to the right.
             switch tab {
             case .chordID:
-                ChordIDView(model: model, listener: listener, player: player, sheetShown: $sheetShown,
+                ChordIDView(model: model, listener: listener, player: player, store: store, sheetShown: $sheetShown,
                             demoRunning: demo.isRunning)
                     .transition(reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity))
             case .library:
@@ -90,6 +91,7 @@ struct RootView: View {
             if newTab != .chordID { listener.stop() }
             player.stop()
         }
+        .task { store.start() }
         .sheet(isPresented: $showDebug) {
             PitchDebugView(tuning: model.soundingTuning)
         }

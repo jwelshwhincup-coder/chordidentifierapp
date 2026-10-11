@@ -21,6 +21,9 @@
          <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "000000000000000100000000" BuildableName = "chordid.app" BlueprintName = "chordid" ReferencedContainer = "container:chordid.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <StoreKitConfigurationFileReference
+         identifier = "../chordidTests/Products.storekit">
+      </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction buildConfiguration = "Release" shouldUseLaunchSchemeArgsEnv = "YES" savedToolIdentifier = "" useCustomWorkingDirectory = "NO" debugDocumentVersioning = "YES">
       <BuildableProductRunnable runnableDebuggingMode = "0">
