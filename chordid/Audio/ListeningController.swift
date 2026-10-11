@@ -77,6 +77,8 @@ final class ListeningController {
     }
 
     func stop() {
+        // Nothing to tear down unless the mic is on (avoids touching the audio session needlessly).
+        guard phase == .listening || tracker.isRunning else { return }
         tracker.stop()
         AudioSessionManager.deactivate()
         if phase == .listening { phase = .idle }

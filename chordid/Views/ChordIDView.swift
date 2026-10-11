@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// The main screen: tuning and capo pickers, fretboard, then either the
@@ -8,6 +9,8 @@ struct ChordIDView: View {
     var player: GuitarPlayer
     @State private var showTuning = false
     @State private var showCapo = false
+    @State private var toast: String?
+    @Environment(\.modelContext) private var context
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -63,6 +66,19 @@ struct ChordIDView: View {
             Spacer(minLength: 8)
         }
         .padding(.horizontal, Theme.sideMargin)
+        .overlay(alignment: .top) {
+            if let toast {
+                Label(toast, systemImage: toast.hasPrefix("Saved") ? "checkmark.circle.fill" : "info.circle.fill")
+                    .font(.brandBodySemibold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(Theme.text, in: Capsule())
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .accessibilityAddTraits(.isStaticText)
+            }
+        }
         .sheet(isPresented: $showTuning) {
             TuningSheet(model: model)
         }
@@ -89,11 +105,33 @@ struct ChordIDView: View {
                 .disabled(model.shape.isEmpty || !player.isAvailable)
                 .accessibilityHint("Plays the chord")
 
-                Button("Save to library") {}
+                Button("Save to library", action: save)
                     .buttonStyle(PillButtonStyle(kind: .primaryDark))
-                    .disabled(true)
-                    .accessibilityHint("Saving arrives in a later update")
+                    .disabled(model.shape.isEmpty)
             }
+        }
+    }
+}
+
+extension ChordIDView {
+    /// Saves straight away under the detected name. An identical shape in the same
+    /// tuning and capo is only saved once.
+    fileprivate func save() {
+        let name = model.analysis.best?.displayName ?? "Chord"
+        let result = SavedChord.save(shape: model.shape, tuning: model.tuning, capo: model.capo, name: name, in: context)
+        switch result {
+        case .saved: show("Saved to library")
+        case .alreadySaved: show("Already in your library")
+        case .nothingToSave: break
+        }
+    }
+
+    fileprivate func show(_ message: String) {
+        withAnimation(.spring(duration: 0.35)) { toast = message }
+        UIAccessibility.post(notification: .announcement, argument: message)
+        Task {
+            try? await Task.sleep(for: .seconds(1.8))
+            withAnimation(.easeOut(duration: 0.3)) { if toast == message { toast = nil } }
         }
     }
 }
@@ -375,5 +413,6 @@ struct ResultView: View {
 
 #Preview {
     ChordIDView(model: ChordIDModel(), listener: ListeningController(), player: GuitarPlayer())
+        .modelContainer(for: SavedChord.self, inMemory: true)
         .background(Theme.background)
 }

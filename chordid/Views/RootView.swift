@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 enum AppTab: Hashable {
@@ -11,17 +12,22 @@ struct RootView: View {
     @State private var player = GuitarPlayer()
     @State private var tab: AppTab = .chordID
     @State private var showDebug = false
+    @State private var libraryPath: [PersistentIdentifier] = []
+    @Query private var saved: [SavedChord]
 
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
             switch tab {
             case .chordID: ChordIDView(model: model, listener: listener, player: player)
-            case .library: LibraryPlaceholderView()
+            case .library: LibraryView(path: $libraryPath, player: player)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            BottomBar(tab: $tab, isListening: listener.isListening, micAction: {
+            // The saved-chord screen hides the bar.
+            if tab != .library || libraryPath.isEmpty {
+            BottomBar(tab: $tab, isListening: listener.isListening,
+                      highlightMic: tab == .library && saved.isEmpty, micAction: {
                 tab = .chordID
                 // Playback and the microphone never run at the same time.
                 player.stop()
@@ -32,9 +38,13 @@ struct RootView: View {
                 player.stop()
                 showDebug = true
             })
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
+        .animation(.easeInOut(duration: 0.25), value: libraryPath.isEmpty)
         .onChange(of: tab) { _, newTab in
             if newTab != .chordID { listener.stop() }
+            player.stop()
         }
         .sheet(isPresented: $showDebug) {
             PitchDebugView(tuning: model.soundingTuning)
@@ -44,8 +54,13 @@ struct RootView: View {
 
 /// Floating pill with two tabs, plus the round mic button.
 struct BottomBar: View {
+    /// Height of the bar including its bottom padding.
+    static let reservedHeight: CGFloat = 76
+
     @Binding var tab: AppTab
     var isListening = false
+    /// Halo around the mic, used by the empty library to point at it.
+    var highlightMic = false
     var micAction: () -> Void
     var micLongPress: () -> Void = {}
 
@@ -69,7 +84,7 @@ struct BottomBar: View {
                     Circle()
                         .fill(Theme.accent.opacity(0.22))
                         .frame(width: 80, height: 80)
-                        .opacity(isListening ? 1 : 0)
+                        .opacity(isListening || highlightMic ? 1 : 0)
                 }
                 .shadow(color: Theme.accent.opacity(0.35), radius: 16, y: 6)
                 .contentShape(Circle())
@@ -108,26 +123,7 @@ struct BottomBar: View {
     }
 }
 
-/// Stand-in until the library is built.
-struct LibraryPlaceholderView: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Library")
-                .font(.brandLargeTitle)
-                .tracking(-1.2)
-                .foregroundStyle(Theme.text)
-                .padding(.top, 8)
-            Spacer()
-            Text("Saved chords will appear here.")
-                .font(.brandBody)
-                .foregroundStyle(Theme.secondaryText)
-                .frame(maxWidth: .infinity)
-            Spacer()
-        }
-        .padding(.horizontal, Theme.sideMargin)
-    }
-}
-
 #Preview {
     RootView()
+        .modelContainer(for: SavedChord.self, inMemory: true)
 }

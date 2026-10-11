@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 @main
@@ -10,5 +11,6 @@ struct ChordIDApp: App {
         WindowGroup {
             RootView()
         }
+        .modelContainer(for: SavedChord.self)
     }
 }
