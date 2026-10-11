@@ -1,4 +1,5 @@
 import Foundation
+import StoreKit
 import StoreKitTest
 import Testing
 @testable import chordid
@@ -67,11 +68,17 @@ struct PaywallContentTests {
 /// Real StoreKit 2 calls against the Products.storekit configuration, in a local test session.
 @Suite(.serialized)
 struct ProStoreTests {
-    private func session() throws -> SKTestSession {
+    /// A local StoreKit session, returned once it is actually serving the product
+    /// (it can take a moment while other suites and the host app start up).
+    private func session() async throws -> SKTestSession {
         let s = try SKTestSession(configurationFileNamed: "Products")
         s.resetToDefaultState()
         s.clearTransactions()
         s.disableDialogs = true
+        for _ in 0..<50 {
+            if let products = try? await Product.products(for: [ProStore.productID]), !products.isEmpty { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
         return s
     }
 
@@ -83,7 +90,7 @@ struct ProStoreTests {
     }
 
     @Test func loadsTheLocalisedPrice() async throws {
-        let s = try session()
+        let s = try await session()
         defer { s.clearTransactions() }
         let store = ProStore(defaults: freshDefaults())
         await store.loadProduct()
@@ -93,7 +100,7 @@ struct ProStoreTests {
     }
 
     @Test func purchaseUnlocksAndPersists() async throws {
-        let s = try session()
+        let s = try await session()
         defer { s.clearTransactions() }
         let defaults = freshDefaults()
         let store = ProStore(defaults: defaults)
@@ -110,7 +117,7 @@ struct ProStoreTests {
     }
 
     @Test func refundRemovesTheUnlock() async throws {
-        let s = try session()
+        let s = try await session()
         defer { s.clearTransactions() }
         let store = ProStore(defaults: freshDefaults())
         await store.loadProduct()
@@ -126,7 +133,7 @@ struct ProStoreTests {
     }
 
     @Test func askToBuyIsPending() async throws {
-        let s = try session()
+        let s = try await session()
         defer { s.clearTransactions(); s.askToBuyEnabled = false }
         s.askToBuyEnabled = true
         let store = ProStore(defaults: freshDefaults())
