@@ -7,6 +7,8 @@ struct FretboardView: View {
     let shape: ChordShape
     /// Capo fret. Dots are relative to the capo; fret numbers and inlays show the real fret.
     var capo: Int = 0
+    /// Names shown above the strings. Defaults to the tuning's names.
+    var stringLabels: [String]?
     /// Strings drawn in the accent colour (listening / strumming).
     var highlightedStrings: Set<Int> = []
     /// While listening: the string being listened for. Strings after it show no marker yet.
@@ -77,7 +79,7 @@ struct FretboardView: View {
         ZStack(alignment: .topLeading) {
             ForEach(0..<tuning.stringCount, id: \.self) { string in
                 let highlighted = highlightedStrings.contains(string)
-                Text(tuning.stringNames[string])
+                Text(label(string))
                     .font(.brandCaption)
                     .foregroundStyle(highlighted ? Theme.accent : Theme.secondaryText)
                     .position(x: m.x(string), y: 26)
@@ -88,7 +90,7 @@ struct FretboardView: View {
                     .onTapGesture { onTapMarker?(string) }
                     .position(x: m.x(string), y: 52)
                     .accessibilityElement()
-                    .accessibilityLabel("\(tuning.stringNames[string]) string, \(markerDescription(string))")
+                    .accessibilityLabel("\(label(string)) string, \(markerDescription(string))")
                     .accessibilityHint(onTapMarker == nil ? "" : "Double tap to switch between open and muted")
                     .accessibilityAddTraits(onTapMarker == nil ? [] : .isButton)
             }
@@ -227,6 +229,10 @@ struct FretboardView: View {
         proxy.scrollTo(max(lowest - 1, 1), anchor: .top)
     }
 
+    private func label(_ string: Int) -> String {
+        stringLabels?[string] ?? tuning.stringNames[string]
+    }
+
     private func markerDescription(_ string: Int) -> String {
         switch shape.frets[string] {
         case nil: "muted"
@@ -236,7 +242,7 @@ struct FretboardView: View {
     }
 
     private var accessibilitySummary: String {
-        (capo > 0 ? "Capo on fret \(capo). " : "") + (0..<tuning.stringCount).map { "\(tuning.stringNames[$0]) \(markerDescription($0))" }.joined(separator: ", ")
+        (capo > 0 ? "Capo on fret \(capo). " : "") + (0..<tuning.stringCount).map { "\(label($0)) \(markerDescription($0))" }.joined(separator: ", ")
     }
 }
 

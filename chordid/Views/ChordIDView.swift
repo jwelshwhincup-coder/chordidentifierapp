@@ -25,6 +25,8 @@ struct ChordIDView: View {
                 tuning: model.soundingTuning,
                 shape: model.shape,
                 capo: model.capo,
+                // With a capo, keep the tuning's own string names (what you'd call the strings).
+                stringLabels: model.tuning.stringNames,
                 highlightedStrings: listener.session?.currentString.map { [$0] } ?? [],
                 listeningString: listener.isListening ? (listener.session?.currentString ?? model.tuning.stringCount) : nil,
                 noteName: { model.noteName(onString: $0) },
